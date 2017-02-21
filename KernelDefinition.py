@@ -15,10 +15,10 @@ def GramGaussianKernel(X,gamma) :
     
 def GramGaussianDistance(gammaP) :
     """Computes pairwise distance over all pixels normalized to [0,1["""
-    X=[]
+    XP=[]
     for i in range(0,32) :
-        X.append(np.array([[i]*32,range(0,32)])/32)
-    return GramGaussianKernel(np.reshape(np.concatenate(np.asarray(X)).T,[-1,2]),gammaP)
+        XP.append(np.array([[i]*32,range(0,32)])/32)
+    return GramGaussianKernel(b=np.reshape(np.concatenate(np.asarray(XP)).T,[-1,2]),gammaP)
 
 def GradMagnitudeOrientation(img) :
     """Computes orientation and gradient matrix over whole image (looping on the edges)"""
@@ -28,26 +28,33 @@ def GradMagnitudeOrientation(img) :
     GradMag=np.sqrt(np.square(GradImgY)+np.square(GradImgX))
     GradOr=np.arctan(GradImgY/(GradImgX+1E-15))
     return GradMag, GradOr 
+
+"We take the classical convention for images x horizontally and y vertically (which is the transpose for matrices)"
     
 def ValueGradKernel(xlist1,ylist1,xlist2,ylist2,img1,img2,gammaO,gammaP,epsG) :
     """Computes gradient match kernel between pacthes xlist1*ylist1 of img1 and xlist2*ylist2 of img2"""
+    patch1=np.ix_(ylist1,xlist1)
+    patch1IndMat=np.matlib.repmat(32*ylist1, len(xlist1), 1).T+np.matlib.repmat(xlist1, len(ylist1), 1)
+    patch2=np.ix_(ylist2,xlist2)
+    patch2IndMat=np.matlib.repmat(32*ylist2, len(xlist2), 1).T+np.matlib.repmat(xlist2, len(ylist2), 1)   
+        
     GradMag1, GradOr1=GradMagnitudeOrientation(img1)
     GradMag2, GradOr2=GradMagnitudeOrientation(img2)
-    subimg1GradMag=GradMag1[np.ix_(xlist1,ylist1)].flatten()
-    subimg2GradMag=GradMag2[np.ix_(xlist2,ylist2)].flatten()
-    subimg1GradOr=GradOr1[np.ix_(xlist1,ylist1)].flatten()
-    subimg2GradOr=GradOr2[np.ix_(xlist2,ylist2)].flatten() 
+    subimg1GradMag=GradMag1[patch1].flatten()
+    subimg2GradMag=GradMag2[patch2].flatten()
+    subimg1GradOr=GradOr1[patch1].flatten()
+    subimg2GradOr=GradOr2[patch2].flatten() 
     normalize1=np.sqrt(np.sum(np.square(subimg1GradMag))+epsG)
     normalize2=np.sqrt(np.sum(np.square(subimg2GradMag))+epsG)   
-    XP=[]
-    XO=[]
-    """Missing the positional kernel weighting, elegant way to compute it on the patches rather than extracting from the whole GramGaussianPMat ?"""
+    """Is there an elegant way to compute it on the patches rather than extracting from the whole GramGaussianPMat ?"""
+    XO=[]    
     for i in range(len(subimg1GradOr)) :
-        XO.append(np.square(subimg2GradOr-subimg1GradOr[i]))                   
-    KgradPQ = np.dot(subimg1GradMag,np.dot(np.asarray(XO),subimg2GradMag.T))/(normalize1*normalize2)
+        XO.append(-np.square(subimg2GradOr-subimg1GradOr[i])*gammaO)
+    XP=GramGaussianPMat[np.ix_(patch1IndMat.flatten(),patch2IndMat.flatten())]                   
+    KgradPQ = np.dot(subimg1GradMag,np.dot(scipy.exp(np.asarray(XO))+XP,subimg2GradMag.T))/(normalize1*normalize2)
     return KgradPQ
 
-
+"test part"
 vec=X[0,:]
 img = np.zeros((32,32,3), dtype='float32')
 img[:,:,0] = vec[0:1024].reshape((32,32))
