@@ -6,6 +6,11 @@ output/*
 __pycache__/
 *.py[cod]
 *$py.class
+model/*
+
+# cython files
+*.pyc
+utils_fast/build/
 
 # C extensions
 *.so
