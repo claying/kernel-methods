@@ -10,8 +10,8 @@ def configuration(parent_package='', top_path=None):
 	config = Configuration('utils_fast', parent_package, top_path)
 
 	extensions = [
-		Extension("utils_fast.utils_fast", 
-				['utils_fast/utils_fast.pyx'],
+		Extension("svm_solver.svm_solvers", 
+				['svm_solver/svm_solvers.pyx'],
 				libraries=["m"],
 				extra_compile_args = ["-ffast-math"],
 				include_dirs = [numpy.get_include()]

@@ -1,12 +1,10 @@
 import numpy as np 
-from scipy.optimize import fmin_l_bfgs_b
 from filters import conv2_gaussian
-from scipy.spatial.distance import cdist
 from utils_fast import compute_kernel
-from utils import extract_patches_2d, centering_patch, normalize_row, kmeans
+from utils import extract_patches_2d, centering_patch, normalize_row, spherical_kmeans, shape_patch
 import pickle
 
-LAYERTYPES = ['gradient', 'patch']
+LAYERTYPES = ['gradient', 'patch', 'shape']
 
 class CKN(object):
 	"""docstring for CKN"""
@@ -84,6 +82,33 @@ class CKNLayer(object):
 		if self.order == 0 and self.layer_type == 'gradient':
 			# no parameter training for gradient map
 			return 
+		elif self.order == 0 and self.layer_type == 'shape':
+			n = input_maps.shape[0]
+			for i in range(n):
+				psi = input_maps[i]
+				patch = extract_patches_2d(psi, self.patch_size)
+				
+				patch = shape_patch(patch)
+				if i == 0:
+					n_patches_per_image = np.minimum(2*self.n_patches_per_image, patch.shape[0])
+					X = np.zeros((n*n_patches_per_image, patch.shape[1]))
+				# discard patches with no variance
+				idx = np.any(patch != patch[:,[0]], axis = 1)
+				if n_patches_per_image <= idx.sum():
+					patch = patch[idx]
+				np.random.shuffle(patch)
+				X[i*n_patches_per_image:(i+1)*n_patches_per_image] = patch[:n_patches_per_image]
+			np.random.shuffle(X)
+			X = normalize_row(X, norm='l2')
+			Z = spherical_kmeans(X, self.map_dim)[0]
+			self.Z = Z  
+			self.sigma2 = 0.25
+			lin_tran = gaussian_func(Z.dot(Z.T), self.sigma2)
+			# svd decomposition to compute lin_tran^(-0.5)
+			w, v = np.linalg.eigh(lin_tran)
+			w = (w + 1e-8)**(-0.5)
+			lin_tran = v.dot(np.diag(w).dot(v.T))
+			self.lin_tran = lin_tran
 		else:
 			n = input_maps.shape[0]
 			for i in range(n):
@@ -102,17 +127,36 @@ class CKNLayer(object):
 					patch = patch[idx]
 				np.random.shuffle(patch)
 				X[i*n_patches_per_image:(i+1)*n_patches_per_image] = patch[:n_patches_per_image]
-			size = X.shape[0]//2
 			np.random.shuffle(X)
 			X = normalize_row(X, norm='l2')
-			w, eta, sigma2 = nystrom_gaussian(X[:size], X[size:], self.map_dim, sigma2=None)
-			self.w = w 
-			self.eta = eta
-			self.sigma2 = sigma2
+			Z = spherical_kmeans(X, self.map_dim)[0]
+			self.Z = Z  
+			self.sigma2 = 0.25
+			lin_tran = gaussian_func(Z.dot(Z.T), self.sigma2)
+			# svd decomposition to compute lin_tran^(-0.5)
+			w, v = np.linalg.eigh(lin_tran)
+			w = (w + 1e-8)**(-0.5)
+			lin_tran = v.dot(np.diag(w).dot(v.T))
+			self.lin_tran = lin_tran
 
 	def forward(self, input_map):
 		if self.order == 0 and self.layer_type == 'gradient':
-			# print(input_map.shape)
+			# n_channels = input_map.shape[-1]
+			# output_map = np.zeros(input_map.shape[:-1] + (self.map_dim*n_channels, ))
+			# theta = np.linspace(0, 2.0*np.pi, self.map_dim+1)[:-1]
+			# delta_theta = 2.0*np.pi/self.map_dim
+			# sigma2 = np.square(1 - np.cos(delta_theta))+np.square(np.sin(delta_theta))
+			# self.sigma2 = sigma2
+			# for k in range(n_channels):
+			# 	input_map_k = input_map[:,:,k]
+			# 	dx, dy = np.gradient(input_map_k)
+			# 	rho = np.sqrt(np.square(dx)+np.square(dy))
+			# 	idx = rho > 0
+			# 	dx[idx] = dx[idx]/rho[idx]
+			# 	dy[idx] = dy[idx]/rho[idx]
+			# 	# sample theta between [0, 2*pi]
+			# 	for i in range(self.map_dim):
+			# 		output_map[:,:,i+self.map_dim*k] = rho * gaussian_func(dx*np.cos(theta[i])+dy*np.sin(theta[i]), sigma2)
 			if input_map.ndim == 3:
 				input_map = input_map[:,:,1]
 			dx, dy = np.gradient(input_map)
@@ -127,7 +171,19 @@ class CKNLayer(object):
 			self.sigma2 = sigma2
 			output_map = np.zeros(input_map.shape + (self.map_dim, ))
 			for i in range(self.map_dim):
-				output_map[:,:,i] = rho * np.exp(-1.0/sigma2*(np.square(dx-np.cos(theta[i]))+np.square(dy-np.sin(theta[i]))))
+				# output_map[:,:,i] = rho * np.exp(-1.0/sigma2*(np.square(dx-np.cos(theta[i]))+np.square(dy-np.sin(theta[i]))))
+				output_map[:,:,i] = rho * gaussian_func(dx*np.cos(theta[i])+dy*np.sin(theta[i]), sigma2)
+		elif self.order == 0 and self.layer_type == 'shape':
+			# we suppose that patch_size is odd
+			n_channels = input_map.shape[-1]
+			patch = extract_patches_2d(input_map, self.patch_size)
+			size = input_map.shape[0] - self.patch_size + 1
+			patch = shape_patch(patch)
+			patch, rho = normalize_row(patch, norm='l2', return_norm=True)
+
+			output_map = gaussian_func(patch.dot(self.Z.T), self.sigma2)
+			output_map = np.diag(rho).dot(output_map.dot(self.lin_tran))
+			output_map = output_map.reshape((size, size, -1))
 		else:
 			patch = extract_patches_2d(input_map, self.patch_size)
 			size = input_map.shape[0] - self.patch_size + 1
@@ -136,9 +192,10 @@ class CKNLayer(object):
 				patch = centering_patch(patch)
 
 			patch = patch.reshape((patch.shape[0], -1))
+
 			patch, rho = normalize_row(patch, norm='l2', return_norm=True)
-			output_map = eval_psi(patch, self.w, self.sigma2)
-			output_map = np.diag(rho).dot(output_map.dot(np.diag(np.sqrt(self.eta))))
+			output_map = gaussian_func(patch.dot(self.Z.T), self.sigma2)
+			output_map = np.diag(rho).dot(output_map.dot(self.lin_tran))
 			output_map = output_map.reshape((size, size, -1))
 		# gaussian smoothing
 		for i in range(output_map.shape[-1]):
@@ -146,88 +203,6 @@ class CKNLayer(object):
 		output_map = output_map[(self.subsampling-1)//2::self.subsampling,(self.subsampling-1)//2::self.subsampling, :]
 		return output_map
 
-
-def gaussian_kernel(X, Y, sigma2):
-	aux = np.sum(np.square(X-Y), axis=1)
-	if sigma2 is None:
-		sigma2 = np.percentile(aux, 10, interpolation='midpoint')
-	return np.exp(-aux/(2.0*sigma2)), sigma2
-
-def eval_psi(X, w, sigma2):
-	"""
-	X : n x m
-	w : dim x m
-	output: n x dim
-	"""
-	n = X.shape[0]
-	dim = w.shape[0]
-	psi = cdist(X, w)
-	psi = np.square(psi)
-	return np.exp(-psi/sigma2)
-
-# def eval_psi2(X, w, sigma2):
-# 	"""
-# 	X : n x m
-# 	w : dim x m
-# 	output: n x dim
-# 	"""
-# 	n = X.shape[0]
-# 	dim = w.shape[0]
-# 	psi = compute_kernel(X, w, sigma2/2.0, kernel='gaussian')
-# 	return psi 
-
-def nystrom_gaussian(X, Y, dim, sigma2=None):
-	# compute and normalize gaussian kernel
-	K, sigma2 = gaussian_kernel(X, Y, sigma2)
-	print sigma2
-	sumK = np.sqrt(np.sum(np.square(K)))
-	K = K/sumK
-
-	n = X.shape[0]
-	sumXY = X + Y 
-
-	from utils import kmeans
-	w = kmeans(X, dim)[0]
-	eta = np.zeros(dim)
-	x0 = np.hstack((w, eta.reshape(-1,1)))
-
-	def func(x, compute_grad=True):
-		x = x.reshape((dim,-1))
-		# print x.shape
-		w = x[:,:-1]
-		eta = x[:,-1]
-		psiX = eval_psi(X, w, sigma2)
-		psiY = eval_psi(Y, w, sigma2)
-		psiXY = psiX * psiY
-		R = K - psiXY.dot(eta)
-		obj = np.mean(np.square(R))
-		# print psiY
-		if not compute_grad:
-			return obj
-		# gradient
-		aux = psiXY.T.dot(np.diag(R)) # dim x n
-		sum_aux = np.sum(aux, axis=1)
-		grad_eta = -2.0/n*sum_aux # dim x 1
-		grad_w = -4.0/(n*sigma2)*np.diag(eta).dot(aux.dot(sumXY) - 2*np.diag(sum_aux).dot(w))
-		grad = np.hstack((grad_w, grad_eta.reshape(-1, 1)))
-		grad = grad.flatten()
-		# print grad
-		return obj, grad
-	print("initial objective function: %f" % func(x0,False))
-	# u = np.ones(x0.shape)*np.inf
-	l = np.zeros(x0.shape)
-	l[:,:-1] = -np.inf 
-	l = l.flatten()
-	x0 = x0.flatten()
-	u = np.ones(x0.shape)*np.inf
-
-	x, obj, information = fmin_l_bfgs_b(func, x0, iprint=-1, maxiter=5000, pgtol=1e-8, bounds=zip(l, u), m=1000)
-	print("final objective function: %f" % obj)
-	print information
-	x = x.reshape((dim, -1))
-	w = x[:,:-1]
-	eta = x[:,-1]
-	print eta
-	print w 
-	return w, eta, sigma2
+def gaussian_func(x, sigma2):
+	return np.exp(1/sigma2*(x-1))
 

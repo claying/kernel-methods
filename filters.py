@@ -8,9 +8,6 @@ def gaussian_filter_1d(shape, sigma):
 	return filt/np.sum(filt)
 
 def conv2_gaussian(in1, shape, sigma=0.5):
-	"""convolve given image with a gaussian filter with given shape
-	sigma: sigma for gaussian
-	"""
 	g_filter = gaussian_filter_1d(shape, sigma)
 	g_filter = np.outer(g_filter, g_filter)
 	return conv2(in1, g_filter)

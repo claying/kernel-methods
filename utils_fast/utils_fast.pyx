@@ -1,18 +1,11 @@
+# encoding: utf-8
 from __future__ import division
 import numpy as np
-# "cimport" is used to import special compile-time information
-# about the numpy module (this is stored in a file numpy.pxd which is
-# currently part of the Cython distribution).
 cimport numpy as np
-# We now need to fix a datatype for our arrays. I've used the variable
-# DTYPE for this, which is assigned to the usual NumPy runtime
-# type info object.
 from libc.math cimport exp
 
 DTYPE = np.float64
-# "ctypedef" assigns a corresponding compile-time type to DTYPE_t. For
-# every type in the numpy module there's a corresponding compile-time
-# type with a _t-suffix.
+
 ctypedef np.float64_t DTYPE_t
 
 cimport cython 
@@ -61,6 +54,7 @@ def compute_kernel(np.ndarray[DTYPE_t, ndim=2] X, np.ndarray[DTYPE_t, ndim=2] Y,
 		int ny = Y.shape[1]
 		DTYPE_t tmp, d 
 		np.ndarray[DTYPE_t, ndim=2] K = np.zeros([mx, my], dtype=DTYPE) 
+		int i, j
 	assert nx == ny
 
 	if kernel == 'gaussian':

@@ -57,23 +57,3 @@ def distribution_y(filepath='data/'):
 	plt.hist(y, bins=np.arange(vmin-0.5, vmax+1.5))
 	plt.show()
 
-
-# y = np.random.randint(1, 2001, size=2000)
-# print y.dtype
-# save_pred(y) 
-
-# X,y= load_data(reshape_images=1)
-# img = X[1][:,:,1]
-# dx, dy = np.gradient(img)
-# print dx 
-# import matplotlib.pyplot as plt
-# plt.imshow(dx, cmap=plt.cm.binary)
-# plt.axis("off")
-# plt.show()
-# print np.mean(x)
-# x = reshape(x)
-# print x.shape 
-# print y.shape
-# imshow(x[1])
-# imshow(x[10])
-# distribution_y()

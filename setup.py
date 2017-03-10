@@ -3,23 +3,16 @@ from distutils.extension import Extension
 import numpy
 from Cython.Build import cythonize
 
-
 def configuration(parent_package='', top_path=None):
 	from numpy.distutils.misc_util import Configuration
 
-	config = Configuration('utils_fast', parent_package, top_path)
+	config = Configuration('kernel-methods', parent_package, top_path)
 
-	extensions = [
-		Extension("utils_fast.utils_fast", 
-				['utils_fast/utils_fast.pyx'],
-				libraries=["m"],
-				extra_compile_args = ["-ffast-math"],
-				include_dirs = [numpy.get_include()]
-				)
-	]
-	
 
-	config.ext_modules += extensions
+	config.add_subpackage('utils_fast')
+	config.add_subpackage('svm_solver')
+
+	config.ext_modules = cythonize(config.ext_modules, nthreads=4)
 
 	return config
 

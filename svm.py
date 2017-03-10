@@ -1,40 +1,55 @@
 import numpy as np 
-import os, sys
-sys.path = [os.path.dirname(os.path.abspath(__file__))+'/liblinear-2.1/python'] + sys.path 
-from liblinearutil import *
+from svm_solver import train_mcsvc, predict_mcsvc, cross_validation
+from utils import check_random_state
 
 class SVM(object):
-	"""docstring for SVM"""
-	def __init__(self, C):
+	def __init__(self, C, seed=None, n_folds=5, tol=0.1):
 		"""C parameter for svm"""
+		self.rng = check_random_state(seed)
 		self.C = C 
-		self.classifier = None
+		self.w = None
+		self.tol = tol 
+		self.n_folds = n_folds # number of folds for cross validation
 
 	def fit(self, Xtr, Ytr):
-		prob = problem(Ytr.tolist(), Xtr.tolist())
-		param = parameter('-s 1 -c %f -s 2' % self.C)
-		classifier = train(prob, param)
-		self.classifier = classifier
+		self.n_classes = np.max(Ytr) + 1
+		Xtr = np.asarray(Xtr, order='C', dtype=np.float32)
+		Ytr = np.asarray(Ytr, order='C', dtype=np.int32)
+		# Ytr = Ytr.astype(Xtr.dtype)
+		self.w = train_mcsvc(Xtr, Ytr, self.C, self.tol, self.n_classes, self.rng)
 
 	def cross_val(self, Xtr, Ytr):
-		prob = problem(Ytr.tolist(), Xtr.tolist())
-		param = parameter('-s 1 -c %f -v 5 -s 2' % self.C)
-		accuracy = train(prob, param)
+		self.n_classes = np.max(Ytr) + 1
+		Xtr = np.asarray(Xtr, order='C', dtype=np.float32)
+		Ytr = np.asarray(Ytr, order='C', dtype=np.int32)
+		accuracy = cross_validation(Xtr, Ytr, self.C, self.n_folds, self.tol, self.n_classes, self.rng)
+		print ("cross validation accuracy: %.1f%%" % accuracy)
 		return accuracy
 
 	def predict(self, Xte):
-		if self.classifier is not None:
-			Yte = [1]*Xte.shape[0]
-			Ypr, accuracy, decision = predict(Yte, Xte.tolist(), self.classifier, '-q')
+		if self.w is not None:
+			Xte = np.asarray(Xte, order='C', dtype=np.float32)
+			Ypr = np.zeros(Xte.shape[0])
+			for i in range(Xte.shape[0]):
+				xi = Xte[i,:]
+				Ypr[i] = predict_mcsvc(self.w, xi)
 		else:
 			raise ValueError('Error! Run fit first!')
-		return np.array(Ypr, dtype=int)
-
-	def evaluate(self, Xte, Yte):
-		if self.classifier is not None:
-			Ypr, accuracy, decision = predict(Yte.tolist(), Xte.tolist(), self.classifier)
-		else:
-			raise ValueError('Error! Run fit first!')
-		return accuracy[0]
+		return Ypr.astype(np.int32)
 
 
+
+
+if __name__ == "__main__":
+	np.random.seed(0)
+	rng = np.random.RandomState(0)
+	Xtr = np.random.rand(200,20)
+	Ytr = np.random.randint(10,size=200)
+	Ytr = Ytr.astype(np.int32)
+	print np.sum(Xtr**2, axis=1)
+
+
+	svm2 = SVM(C=1, seed=rng)
+	print svm2.cross_val(Xtr, Ytr)
+	# print np.array(svm2.w)
+	# print svm2.predict(Xtr)
