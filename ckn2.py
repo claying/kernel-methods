@@ -141,38 +141,22 @@ class CKNLayer(object):
 
 	def forward(self, input_map):
 		if self.order == 0 and self.layer_type == 'gradient':
-			# n_channels = input_map.shape[-1]
-			# output_map = np.zeros(input_map.shape[:-1] + (self.map_dim*n_channels, ))
-			# theta = np.linspace(0, 2.0*np.pi, self.map_dim+1)[:-1]
-			# delta_theta = 2.0*np.pi/self.map_dim
-			# sigma2 = np.square(1 - np.cos(delta_theta))+np.square(np.sin(delta_theta))
-			# self.sigma2 = sigma2
-			# for k in range(n_channels):
-			# 	input_map_k = input_map[:,:,k]
-			# 	dx, dy = np.gradient(input_map_k)
-			# 	rho = np.sqrt(np.square(dx)+np.square(dy))
-			# 	idx = rho > 0
-			# 	dx[idx] = dx[idx]/rho[idx]
-			# 	dy[idx] = dy[idx]/rho[idx]
-			# 	# sample theta between [0, 2*pi]
-			# 	for i in range(self.map_dim):
-			# 		output_map[:,:,i+self.map_dim*k] = rho * gaussian_func(dx*np.cos(theta[i])+dy*np.sin(theta[i]), sigma2)
-			if input_map.ndim == 3:
-				input_map = input_map[:,:,1]
-			dx, dy = np.gradient(input_map)
-			rho = np.sqrt(np.square(dx)+np.square(dy))
-			idx = rho > 0
-			dx[idx] = dx[idx]/rho[idx]
-			dy[idx] = dy[idx]/rho[idx]
-			# sample theta between [0, 2*pi]
+			n_channels = input_map.shape[-1]
+			output_map = np.zeros(input_map.shape[:-1] + (self.map_dim*n_channels, ))
 			theta = np.linspace(0, 2.0*np.pi, self.map_dim+1)[:-1]
 			delta_theta = 2.0*np.pi/self.map_dim
 			sigma2 = np.square(1 - np.cos(delta_theta))+np.square(np.sin(delta_theta))
 			self.sigma2 = sigma2
-			output_map = np.zeros(input_map.shape + (self.map_dim, ))
-			for i in range(self.map_dim):
-				# output_map[:,:,i] = rho * np.exp(-1.0/sigma2*(np.square(dx-np.cos(theta[i]))+np.square(dy-np.sin(theta[i]))))
-				output_map[:,:,i] = rho * gaussian_func(dx*np.cos(theta[i])+dy*np.sin(theta[i]), sigma2)
+			for k in range(n_channels):
+				input_map_k = input_map[:,:,k]
+				dx, dy = np.gradient(input_map_k)
+				rho = np.sqrt(np.square(dx)+np.square(dy))
+				idx = rho > 0
+				dx[idx] = dx[idx]/rho[idx]
+				dy[idx] = dy[idx]/rho[idx]
+				# sample theta between [0, 2*pi]
+				for i in range(self.map_dim):
+					output_map[:,:,i+self.map_dim*k] = rho * gaussian_func(dx*np.cos(theta[i])+dy*np.sin(theta[i]), sigma2)
 		elif self.order == 0 and self.layer_type == 'shape':
 			# we suppose that patch_size is odd
 			n_channels = input_map.shape[-1]
